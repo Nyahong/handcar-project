@@ -16,7 +16,8 @@ import {
   Navigation,
   ExternalLink,
   ChevronRight,
-  Info
+  Info,
+  Lightbulb
 } from 'lucide-react';
 
 const AI_PROXY_URL = import.meta.env.VITE_AI_PROXY_URL;
@@ -217,6 +218,16 @@ export default function App() {
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState(null);
   const [showLogin, setShowLogin] = useState(false);
+
+  // 계기판 촬영 가이드 화면 표시 상태
+  const [showPhotoGuide, setShowPhotoGuide] = useState(false);
+
+  // "일주일 동안 보지 않기" 설정 상태
+  // localStorage에 저장된 만료 시간이 현재 시간보다 크면 가이드를 생략합니다.
+  const [hideGuideForWeek, setHideGuideForWeek] = useState(() => {
+    const hideUntil = Number(localStorage.getItem('hidePhotoGuideUntil') || 0);
+    return hideUntil > Date.now();
+  });
 
   // DIY 가이드 상태
   const [diyStep, setDiyStep] = useState(1);
@@ -541,6 +552,25 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen bg-slate-50 font-sans text-slate-900 max-w-md mx-auto shadow-2xl relative border-x border-slate-200">
+      {/*
+        계기판 촬영 가이드 오버레이
+        - 메인 화면의 "사진 촬영 및 선택" 버튼을 눌렀을 때 showPhotoGuide가 true가 됩니다.
+        - 사용자가 가이드에서 "사진 촬영 시작"을 누르면 기존 hidden input을 클릭해 파일 선택/촬영을 시작합니다.
+      */}
+      {showPhotoGuide && (
+        <PhotoGuideScreen
+          hideGuideForWeek={hideGuideForWeek}
+          setHideGuideForWeek={setHideGuideForWeek}
+          onClose={() => setShowPhotoGuide(false)}
+          onStart={() => {
+            setShowPhotoGuide(false);
+            setTimeout(() => {
+              document.getElementById('dashboard-photo-input')?.click();
+            }, 100);
+          }}
+        />
+      )}
+
       {/* 상단바 */}
       <header className="bg-white px-4 py-4 flex items-center justify-between border-b sticky top-0 z-40">
         <button onClick={() => { setImage(null); setResult(null); setActiveTab('find'); }} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
@@ -568,10 +598,34 @@ export default function App() {
                   <h2 className="text-2xl font-black">경고등을 찍어주세요</h2>
                   <p className="text-slate-500 font-medium">AI가 실시간으로 분석해드립니다</p>
                 </div>
-                <label className="block w-full py-5 bg-blue-600 text-white rounded-3xl font-bold shadow-xl shadow-blue-200 cursor-pointer active:scale-95 transition-transform text-lg">
-                  사진 촬영 및 선택
-                  <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-                </label>
+                <>
+                  {/*
+                    기존에는 이 영역이 label + input 구조라서 버튼을 누르면 바로 파일 선택창이 열렸습니다.
+                    지금은 먼저 촬영 가이드 화면을 보여준 뒤, 가이드의 "사진 촬영 시작" 버튼에서
+                    아래 hidden input을 클릭하도록 변경했습니다.
+                  */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (hideGuideForWeek) {
+                        document.getElementById('dashboard-photo-input')?.click();
+                      } else {
+                        setShowPhotoGuide(true);
+                      }
+                    }}
+                    className="block w-full py-5 bg-blue-600 text-white rounded-3xl font-bold shadow-xl shadow-blue-200 cursor-pointer active:scale-95 transition-transform text-lg"
+                  >
+                    사진 촬영 및 선택
+                  </button>
+
+                  <input
+                    id="dashboard-photo-input"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleImageUpload}
+                  />
+                </>
               </div>
             ) : analyzing ? (
               <div className="flex flex-col items-center justify-center py-20 space-y-6">
@@ -1032,6 +1086,192 @@ export default function App() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+
+// =============================================================================
+// 계기판 촬영 가이드 화면 컴포넌트
+// =============================================================================
+// 이 컴포넌트는 기존 업로드/AI 분석 로직을 건드리지 않고,
+// 파일 선택창이 열리기 전에 사용자에게 촬영 가이드를 먼저 보여주기 위한 화면입니다.
+function PhotoGuideScreen({ onClose, onStart, hideGuideForWeek, setHideGuideForWeek }) {
+  const handleCheckWeek = (checked) => {
+    setHideGuideForWeek(checked);
+
+    if (checked) {
+      const sevenDays = 7 * 24 * 60 * 60 * 1000;
+      localStorage.setItem('hidePhotoGuideUntil', String(Date.now() + sevenDays));
+    } else {
+      localStorage.removeItem('hidePhotoGuideUntil');
+    }
+  };
+
+  return (
+    <div className="absolute inset-0 z-[999] bg-white flex flex-col">
+      <header className="bg-white px-4 py-4 border-b flex items-center justify-center relative">
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute left-4 p-2 rounded-full hover:bg-slate-100"
+          aria-label="촬영 가이드 닫기"
+        >
+          <ChevronLeft className="w-7 h-7 text-slate-900" />
+        </button>
+
+        <div className="text-center">
+          <h1 className="text-2xl font-black text-slate-900">계기판 촬영 가이드</h1>
+          <p className="mt-1 text-sm font-medium text-slate-500">
+            정확한 분석을 위해 아래 예시를 확인해 주세요
+          </p>
+        </div>
+      </header>
+
+      <main className="flex-1 overflow-y-auto p-6 space-y-8 pb-36">
+        <section className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-emerald-500 flex items-center justify-center">
+              <CheckCircle className="w-6 h-6 text-white" />
+            </div>
+            <h2 className="text-xl font-black text-slate-900">올바른 촬영</h2>
+          </div>
+
+          <div className="relative bg-white rounded-3xl border-2 border-emerald-500 p-3 shadow-lg shadow-emerald-100">
+            <div className="absolute -top-3 -left-3 w-12 h-12 rounded-full bg-emerald-500 border-4 border-white flex items-center justify-center z-10">
+              <CheckCircle className="w-7 h-7 text-white" />
+            </div>
+
+            <DashboardMockup type="correct" />
+
+            <div className="mt-3 py-3 px-4 rounded-2xl bg-emerald-50 flex items-center justify-center gap-2">
+              <CheckCircle className="w-5 h-5 text-emerald-500 shrink-0" />
+              <p className="text-sm font-black text-slate-800 text-center">
+                계기판 전체가 선명하게, 정면에서 촬영
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-red-500 flex items-center justify-center">
+              <X className="w-6 h-6 text-white" />
+            </div>
+            <h2 className="text-xl font-black text-slate-900">피해야 할 촬영</h2>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <WrongPhotoCard type="dark" label="너무 어두움" />
+            <WrongPhotoCard type="blur" label="초점 흐림" />
+            <WrongPhotoCard type="glare" label="빛 반사" />
+          </div>
+        </section>
+
+        <section className="rounded-3xl bg-blue-50 border border-blue-100 p-5 space-y-4">
+          <div className="flex items-center gap-2">
+            <Lightbulb className="w-6 h-6 text-blue-600" />
+            <h2 className="text-lg font-black text-blue-600">촬영 팁</h2>
+          </div>
+
+          <GuideTip number="1" text="계기판 전체가 화면에 들어오도록 정면에서 촬영해 주세요." />
+          <GuideTip number="2" text="햇빛·실내등 반사가 없는 각도를 찾아 촬영해 주세요." />
+          <GuideTip number="3" text="손을 고정하고 흔들리지 않게 촬영하세요." />
+          <GuideTip number="4" text="엔진을 켠 상태에서 경고등이 켜진 채로 찍어주세요." />
+        </section>
+      </main>
+
+      <div className="absolute bottom-0 left-0 right-0 bg-white border-t p-5 space-y-4">
+        <button
+          type="button"
+          onClick={onStart}
+          className="w-full py-5 bg-blue-600 text-white rounded-3xl font-black shadow-xl shadow-blue-200 active:scale-95 transition-transform text-lg flex items-center justify-center gap-2"
+        >
+          <Camera className="w-6 h-6" />
+          사진 촬영 시작
+        </button>
+
+        <label className="flex items-center justify-center gap-3 text-slate-500 font-bold">
+          <input
+            type="checkbox"
+            checked={hideGuideForWeek}
+            onChange={(e) => handleCheckWeek(e.target.checked)}
+            className="w-6 h-6 accent-blue-600"
+          />
+          일주일 동안 보지 않기
+        </label>
+      </div>
+    </div>
+  );
+}
+
+// 실제 사진 대신 계기판 예시를 간단한 UI 도형으로 그리는 컴포넌트입니다.
+function DashboardMockup({ type = 'correct' }) {
+  return (
+    <div
+      className={`
+        relative h-44 rounded-2xl bg-slate-950 overflow-hidden flex items-center justify-center
+        ${type === 'dark' ? 'brightness-[0.25]' : ''}
+        ${type === 'blur' ? 'blur-[2px]' : ''}
+      `}
+    >
+      <div className="absolute inset-0 bg-gradient-to-b from-slate-800/50 to-slate-950"></div>
+
+      <div className="relative flex items-center justify-center gap-5 w-full">
+        <div className="relative w-24 h-24 rounded-full border-4 border-slate-400">
+          <div className="absolute inset-4 rounded-full border border-slate-600"></div>
+          <div className="absolute left-1/2 top-1/2 w-1 h-12 bg-red-500 rounded-full origin-bottom -translate-x-1/2 -translate-y-full"></div>
+          <div className="absolute left-1/2 top-1/2 w-3 h-3 bg-white rounded-full -translate-x-1/2 -translate-y-1/2"></div>
+        </div>
+
+        <div className="w-12 h-16 rounded border border-slate-600 flex items-start justify-start p-2 text-white text-sm font-black">
+          D
+        </div>
+
+        <div className="relative w-24 h-24 rounded-full border-4 border-slate-400">
+          <div className="absolute inset-4 rounded-full border border-slate-600"></div>
+          <div className="absolute left-1/2 top-1/2 w-1 h-12 bg-red-500 rounded-full origin-bottom -translate-x-1/2 -translate-y-full rotate-45"></div>
+          <div className="absolute left-1/2 top-1/2 w-3 h-3 bg-white rounded-full -translate-x-1/2 -translate-y-1/2"></div>
+        </div>
+      </div>
+
+      {type === 'glare' && (
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/80 to-transparent rotate-12 scale-150"></div>
+      )}
+    </div>
+  );
+}
+
+// 잘못된 촬영 예시 카드입니다.
+function WrongPhotoCard({ type, label }) {
+  return (
+    <div className="relative bg-white rounded-2xl border-2 border-red-500 p-2 shadow-sm">
+      <div className="absolute -top-2 -left-2 w-8 h-8 rounded-full bg-red-500 border-4 border-white flex items-center justify-center z-10">
+        <X className="w-5 h-5 text-white" />
+      </div>
+
+      <DashboardMockup type={type} />
+
+      <div className="mt-3 flex items-center gap-1.5 justify-center">
+        <div className="w-5 h-5 rounded-full border-2 border-red-500 flex items-center justify-center shrink-0">
+          <X className="w-3 h-3 text-red-500" />
+        </div>
+        <p className="text-xs font-black text-slate-700 text-center">{label}</p>
+      </div>
+    </div>
+  );
+}
+
+// 촬영 팁 한 줄입니다.
+function GuideTip({ number, text }) {
+  return (
+    <div className="flex gap-3 border-b border-dashed border-blue-200 last:border-b-0 pb-3 last:pb-0">
+      <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-black shrink-0">
+        {number}
+      </div>
+      <p className="text-sm font-bold text-slate-700 leading-relaxed">
+        {text}
+      </p>
     </div>
   );
 }
